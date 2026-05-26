@@ -1,5 +1,7 @@
 import os
 import logging
+import imageio
+imageio.plugins.ffmpeg.download()
 import subprocess
 import tempfile
 from pathlib import Path
