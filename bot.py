@@ -24,9 +24,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN", "")
-# Railway автоматически даёт эту переменную
 RAILWAY_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
 PORT = int(os.environ.get("PORT", 8080))
+
+# Путь к cookies файлу
+COOKIES_FILE = "/app/cookies.txt"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -120,6 +122,7 @@ async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             ydl_opts = {
                 "format": "bestaudio/best",
                 "outtmpl": output_template,
+                "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
@@ -127,6 +130,10 @@ async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url
                 }],
                 "quiet": True,
             }
+            # Убираем cookiefile если файл не найден
+            if not ydl_opts["cookiefile"]:
+                del ydl_opts["cookiefile"]
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 title = info.get("title", "audio")
@@ -312,7 +319,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    # Webhook для Railway
     if RAILWAY_URL:
         logger.info(f"Starting webhook on {RAILWAY_URL}")
         app.run_webhook(
@@ -322,7 +328,6 @@ def main():
             url_path="/webhook",
         )
     else:
-        # Локальный запуск — polling
         logger.info("Starting polling (local mode)...")
         app.run_polling(drop_pending_updates=True)
 
