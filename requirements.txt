@@ -1,4 +1,5 @@
 python-telegram-bot[webhooks]
 imageio[ffmpeg]
 ffmpeg-python
-yt-dlp
+yt-dlp>=2025.1.15
+mutagen
