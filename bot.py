@@ -132,6 +132,16 @@ async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url
                     "preferredquality": "192",
                 }],
                 "quiet": False,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android_vr"],
+                    }
+                },
+                "sleep_interval": 3,
+                "max_sleep_interval": 6,
+                "http_headers": {
+                    "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
+                },
             }
 
             if os.path.exists(COOKIES_FILE):
