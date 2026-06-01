@@ -26,9 +26,8 @@ logger = logging.getLogger(__name__)
 TOKEN = os.environ.get("BOT_TOKEN", "")
 RAILWAY_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
 PORT = int(os.environ.get("PORT", 8080))
-
-# Путь к cookies файлу
 COOKIES_FILE = "/app/cookies.txt"
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -41,6 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Просто отправь файл или ссылку!",
         parse_mode="Markdown"
     )
+
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.video:
@@ -60,6 +60,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎬 Видео получено! Что сделать?",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.audio:
@@ -83,10 +84,10 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
-    # YouTube ссылка
     if "youtube.com" in text or "youtu.be" in text:
         await handle_youtube(update, context, text)
         return
@@ -113,8 +114,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⏳ Применяю теги...")
         await do_apply_tags(update, context)
 
+
 async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    msg = await logger.info(f"Cookies file exists: {os.path.exists(COOKIES_FILE)}, path: {COOKIES_FILE}") update.message.reply_text("⏳ Скачиваю аудио с YouTube...")
+    msg = await update.message.reply_text("⏳ Скачиваю аудио с YouTube...")
+    logger.info(f"Cookies file exists: {os.path.exists(COOKIES_FILE)}, path: {COOKIES_FILE}")
+
     try:
         import yt_dlp
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -122,23 +126,24 @@ async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             ydl_opts = {
                 "format": "bestaudio/best",
                 "outtmpl": output_template,
-                "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": "192",
                 }],
-                "quiet": True,
+                "quiet": False,
             }
-            # Убираем cookiefile если файл не найден
-            if not ydl_opts["cookiefile"]:
-                del ydl_opts["cookiefile"]
+
+            if os.path.exists(COOKIES_FILE):
+                ydl_opts["cookiefile"] = COOKIES_FILE
+                logger.info("Using cookies file!")
+            else:
+                logger.warning("Cookies file NOT found!")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 title = info.get("title", "audio")
 
-            # Find the downloaded mp3
             mp3_file = None
             for f in os.listdir(tmpdir):
                 if f.endswith(".mp3"):
@@ -163,6 +168,7 @@ async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url
         logger.error(f"YouTube error: {e}")
         await msg.edit_text("❌ Ошибка при скачивании. Проверь ссылку и попробуй ещё раз.")
 
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -178,6 +184,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✏️ Введи *название песни* (или '-' чтобы пропустить):", parse_mode="Markdown")
         context.user_data["tag_step"] = "title"
 
+
 def get_ffmpeg():
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
@@ -188,6 +195,7 @@ def get_ffmpeg():
     except Exception:
         pass
     return "ffmpeg"
+
 
 async def do_extract(update: Update, context: ContextTypes.DEFAULT_TYPE, voice: bool):
     query = update.callback_query
@@ -231,6 +239,7 @@ async def do_extract(update: Update, context: ContextTypes.DEFAULT_TYPE, voice: 
         logger.error(f"Error in do_extract: {e}")
         await query.message.reply_text("❌ Ошибка при конвертации.")
 
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get("tag_step")
     if step != "cover":
@@ -241,6 +250,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["tag_step"] = None
     await update.message.reply_text("⏳ Применяю теги и обложку...")
     await do_apply_tags(update, context)
+
 
 async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_id = context.user_data.get("audio_file_id")
@@ -304,6 +314,7 @@ async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for key in ["audio_file_id", "audio_fname", "tag_title", "tag_artist", "tag_cover_file_id", "tag_step"]:
             context.user_data.pop(key, None)
 
+
 def main():
     if not TOKEN:
         raise ValueError("BOT_TOKEN environment variable is not set!")
@@ -330,6 +341,7 @@ def main():
     else:
         logger.info("Starting polling (local mode)...")
         app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
