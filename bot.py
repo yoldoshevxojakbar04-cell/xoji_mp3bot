@@ -114,7 +114,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await do_apply_tags(update, context)
 
 async def handle_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
-    msg = await update.message.reply_text("⏳ Скачиваю аудио с YouTube...")
+    msg = await logger.info(f"Cookies file exists: {os.path.exists(COOKIES_FILE)}, path: {COOKIES_FILE}") update.message.reply_text("⏳ Скачиваю аудио с YouTube...")
     try:
         import yt_dlp
         with tempfile.TemporaryDirectory() as tmpdir:
