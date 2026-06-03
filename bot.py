@@ -234,15 +234,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✏️ Введи *исполнителя* (или '-' чтобы пропустить):", parse_mode="Markdown")
     elif step == "artist":
         context.user_data["tag_artist"] = text
-        context.user_data["tag_step"] = "cover"
         has_cover = user_has_cover(update.message.from_user.id)
         if has_cover:
-            await update.message.reply_text(
-                "🖼️ Отправь *новое фото*, напиши '-' чтобы использовать сохранённую обложку, "
-                "или напиши 'нет' чтобы без обложки:",
-                parse_mode="Markdown"
-            )
+            # Есть сохранённая обложка — сразу применяем без вопросов
+            context.user_data["tag_use_saved_cover"] = True
+            context.user_data["tag_cover_file_id"] = None
+            context.user_data["tag_step"] = None
+            await update.message.reply_text("⏳ Применяю теги с сохранённой обложкой...")
+            await do_apply_tags(update, context)
         else:
+            # Нет обложки — спрашиваем
+            context.user_data["tag_step"] = "cover"
             await update.message.reply_text(
                 "🖼️ Отправь *фото* для обложки (или '-' чтобы пропустить):",
                 parse_mode="Markdown"
