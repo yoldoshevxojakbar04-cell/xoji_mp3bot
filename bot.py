@@ -494,8 +494,10 @@ async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
         audio_file = await context.bot.get_file(file_id)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = os.path.join(tmpdir, "input.mp3")
-            output_path = os.path.join(tmpdir, fname if fname.endswith(".mp3") else "output.mp3")
+            # Сохраняем оригинальный файл с его расширением
+            orig_ext = os.path.splitext(fname)[1].lower() or ".mp3"
+            input_path = os.path.join(tmpdir, f"input{orig_ext}")
+            output_path = os.path.join(tmpdir, "output.mp3")
             await audio_file.download_to_drive(input_path)
 
             meta_args = []
@@ -517,14 +519,27 @@ async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cover_source = "сохранённая"
 
             if cover_path:
-                cmd = [ffmpeg, "-y", "-i", input_path, "-i", cover_path,
+                # Сначала конвертируем в mp3, потом добавляем обложку
+                converted_path = os.path.join(tmpdir, "converted.mp3")
+                cmd_convert = [ffmpeg, "-y", "-i", input_path,
+                               "-acodec", "libmp3lame", "-ab", "192k",
+                               *meta_args, converted_path]
+                result = subprocess.run(cmd_convert, capture_output=True, timeout=60)
+                if result.returncode != 0:
+                    raise Exception(result.stderr.decode())
+
+                # Добавляем обложку к mp3
+                cmd = [ffmpeg, "-y", "-i", converted_path, "-i", cover_path,
                        "-map", "0:a", "-map", "1:v", "-c:a", "copy", "-c:v", "mjpeg",
                        "-id3v2_version", "3",
                        "-metadata:s:v", "title=Album cover",
                        "-metadata:s:v", "comment=Cover (front)",
-                       *meta_args, output_path]
+                       output_path]
             else:
-                cmd = [ffmpeg, "-y", "-i", input_path, "-c:a", "copy", *meta_args, output_path]
+                # Просто конвертируем в mp3 с тегами
+                cmd = [ffmpeg, "-y", "-i", input_path,
+                       "-acodec", "libmp3lame", "-ab", "192k",
+                       *meta_args, output_path]
 
             result = subprocess.run(cmd, capture_output=True, timeout=60)
             if result.returncode != 0:
