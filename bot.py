@@ -28,14 +28,43 @@ RAILWAY_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
 PORT = int(os.environ.get("PORT", 8080))
 COOKIES_FILE = "/app/cookies.txt"
 
+# Храним обложки в памяти как Telegram file_id (не сбрасывается при деплое внутри сессии)
+# Для постоянного хранения используем файл
 COVERS_DIR = "/app/user_covers"
 os.makedirs(COVERS_DIR, exist_ok=True)
 
-def get_user_cover_path(user_id: int) -> str:
-    return os.path.join(COVERS_DIR, f"{user_id}.jpg")
+# Кэш в памяти: user_id -> file_id
+_cover_cache: dict = {}
+
+def get_cover_file_id(user_id: int):
+    """Возвращает сохранённый Telegram file_id обложки или None"""
+    if user_id in _cover_cache:
+        return _cover_cache[user_id]
+    # Пробуем загрузить из файла
+    path = os.path.join(COVERS_DIR, f"{user_id}.txt")
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            fid = f.read().strip()
+            _cover_cache[user_id] = fid
+            return fid
+    return None
+
+def save_cover_file_id(user_id: int, file_id: str):
+    """Сохраняет Telegram file_id обложки"""
+    _cover_cache[user_id] = file_id
+    path = os.path.join(COVERS_DIR, f"{user_id}.txt")
+    with open(path, "w") as f:
+        f.write(file_id)
+
+def delete_cover(user_id: int):
+    """Удаляет сохранённую обложку"""
+    _cover_cache.pop(user_id, None)
+    path = os.path.join(COVERS_DIR, f"{user_id}.txt")
+    if os.path.exists(path):
+        os.remove(path)
 
 def user_has_cover(user_id: int) -> bool:
-    return os.path.exists(get_user_cover_path(user_id))
+    return get_cover_file_id(user_id) is not None
 
 def parse_time(time_str: str) -> int:
     """Парсит время в секунды. Форматы: 1:23, 1:23:45, 83 (секунды)"""
@@ -80,24 +109,27 @@ async def cmd_setcover(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["waiting_for_cover"] = True
     await update.message.reply_text("🖼️ Отправь фото для обложки по умолчанию:")
 
+async def cmd_changecover(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["waiting_for_cover"] = True
+    await update.message.reply_text("🖼️ Отправь новое фото для замены обложки:")
+
 async def cmd_mycover(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    if user_has_cover(user_id):
-        with open(get_user_cover_path(user_id), "rb") as f:
-            await update.message.reply_photo(
-                photo=f,
-                caption="🖼️ Твоя текущая обложка.\n\n"
-                        "Заменить: /setcover\n"
-                        "Удалить: /removecover"
-            )
+    fid = get_cover_file_id(user_id)
+    if fid:
+        await update.message.reply_photo(
+            photo=fid,
+            caption="🖼️ Твоя текущая обложка.\n\n"
+                    "Заменить: /setcover\n"
+                    "Удалить: /removecover"
+        )
     else:
         await update.message.reply_text("❌ Нет сохранённой обложки. Установи через /setcover")
 
 async def cmd_removecover(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    cover_path = get_user_cover_path(user_id)
-    if os.path.exists(cover_path):
-        os.remove(cover_path)
+    if user_has_cover(user_id):
+        delete_cover(user_id)
         await update.message.reply_text("✅ Обложка удалена.")
     else:
         await update.message.reply_text("❌ Нет сохранённой обложки.")
@@ -270,9 +302,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("waiting_for_cover"):
         context.user_data["waiting_for_cover"] = False
         photo = update.message.photo[-1]
-        file = await context.bot.get_file(photo.file_id)
-        cover_path = get_user_cover_path(user_id)
-        await file.download_to_drive(cover_path)
+        save_cover_file_id(user_id, photo.file_id)
         await update.message.reply_text(
             "✅ Обложка по умолчанию сохранена!\n"
             "Посмотреть: /mycover | Удалить: /removecover"
@@ -517,7 +547,11 @@ async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await cover_file.download_to_drive(cover_path)
                 cover_source = "новая"
             elif use_saved_cover and user_has_cover(user_id):
-                cover_path = get_user_cover_path(user_id)
+                # Скачиваем обложку по file_id
+                saved_fid = get_cover_file_id(user_id)
+                cover_file = await context.bot.get_file(saved_fid)
+                cover_path = os.path.join(tmpdir, "cover.jpg")
+                await cover_file.download_to_drive(cover_path)
                 cover_source = "сохранённая"
 
             if cover_path:
