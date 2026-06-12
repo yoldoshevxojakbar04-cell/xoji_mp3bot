@@ -496,8 +496,19 @@ async def do_extract(update: Update, context: ContextTypes.DEFAULT_TYPE, voice: 
                 raise Exception(f"ffmpeg error: {result.stderr.decode()}")
 
             if voice:
-                with open(output_path, "rb") as f:
-                    await query.message.reply_voice(voice=f, caption="🎤 Голосовое готово!")
+                try:
+                    with open(output_path, "rb") as f:
+                        await query.message.reply_voice(voice=f, caption="🎤 Голосовое готово!")
+                except Exception as voice_err:
+                    if "forbidden" in str(voice_err).lower():
+                        # Пользователь запретил голосовые — отправляем как аудио
+                        with open(output_path, "rb") as f:
+                            await query.message.reply_audio(
+                                audio=f, filename="audio.ogg",
+                                caption="🎵 Голосовые запрещены в настройках — отправляю как аудио файл"
+                            )
+                    else:
+                        raise voice_err
             else:
                 with open(output_path, "rb") as f:
                     await query.message.reply_audio(audio=f, filename="audio.mp3", caption="🎵 MP3 готов!")
@@ -560,7 +571,7 @@ async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cmd_convert = [ffmpeg, "-y", "-i", input_path,
                                "-acodec", "libmp3lame", "-ab", "192k",
                                *meta_args, converted_path]
-                result = subprocess.run(cmd_convert, capture_output=True, timeout=60)
+                result = subprocess.run(cmd_convert, capture_output=True, timeout=180)
                 if result.returncode != 0:
                     raise Exception(result.stderr.decode())
 
@@ -577,7 +588,7 @@ async def do_apply_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
                        "-acodec", "libmp3lame", "-ab", "192k",
                        *meta_args, output_path]
 
-            result = subprocess.run(cmd, capture_output=True, timeout=60)
+            result = subprocess.run(cmd, capture_output=True, timeout=180)
             if result.returncode != 0:
                 raise Exception(result.stderr.decode())
 
